@@ -430,6 +430,7 @@ class Renderer:
         self._build_shaders(ctx)
         self._build_geometry(ctx)
         self._build_hud(ctx, width, height)
+        self.update_projection(width, height)  # compute proj now hud_tex exists
 
     def _init_pygame(self, w, h):
         if _pygame_available:
@@ -489,9 +490,8 @@ class Renderer:
             self.prog_flat,
             [(self.arrow_vbo, "3f", "in_pos")])
 
-        # Projection
+        # Projection (computed once HUD is ready; set a placeholder here)
         self.proj = np.identity(4, dtype=np.float32)
-        self.update_projection(self.width, self.height)
 
     def _build_hud(self, ctx, w, h):
         """Fullscreen quad for HUD overlay."""
@@ -514,10 +514,11 @@ class Renderer:
         from camera import _perspective
         self.width, self.height = w, h
         self.proj = _perspective(45.0, w / h if h > 0 else 1.0, 0.01, 200.0)
-        # Rebuild HUD texture at new size
-        self.hud_tex.release()
-        self.hud_tex = self.ctx.texture((w, h), 4)
-        self.hud_tex.filter = moderngl.LINEAR, moderngl.LINEAR
+        # Rebuild HUD texture at new size (guard: only after _build_hud)
+        if hasattr(self, 'hud_tex'):
+            self.hud_tex.release()
+            self.hud_tex = self.ctx.texture((w, h), 4)
+            self.hud_tex.filter = moderngl.LINEAR, moderngl.LINEAR
 
     def _set_sphere_uniforms(self, prog, view, proj, model, color, cam_pos):
         prog["view"].write(view.T.astype(np.float32).tobytes())
