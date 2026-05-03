@@ -353,6 +353,12 @@ def _load_tex(ctx, path, comps=3):
 def _identity():
     return np.eye(4, dtype=np.float32)
 
+def _mat_trans(tx, ty, tz):
+    """4x4 translation matrix (float32)."""
+    m = np.eye(4, dtype=np.float32)
+    m[0, 3] = tx; m[1, 3] = ty; m[2, 3] = tz
+    return m
+
 def _grid_lines(size=8.0, step=1.0):
     v=[]; x=-size
     while x<=size+1e-6:
@@ -388,7 +394,7 @@ def _make_hud(physics, paused, dt_mult, W, H):
     e=sat.total_energy(); ke=sat.kinetic_energy(); pe=sat.potential_energy()
     sp=sat.speed(); di=sat.distance(); vc=sat.circular_speed(); ve=sat.escape_speed()
     tc={"CIRCULAR":c("go"),"ELLIPTICAL":c("wn"),"ESCAPE":c("dn")}[ot]
-    pw,ph=292,378; px,py=W-pw-12,12
+    pw,ph=292,545; px,py=W-pw-12,12
     pan=_pg.Surface((pw,ph),_pg.SRCALPHA); pan.fill(c("bg"))
     _pg.draw.rect(pan,(38,55,82,255),pan.get_rect(),1); surf.blit(pan,(px,py))
     def row(lb,vl,vc_,yo):
@@ -407,12 +413,26 @@ def _make_hud(physics, paused, dt_mult, W, H):
     sep(y); y+=10
     row("KINETIC E",  f"{ke:+8.3f}",    c("go"), y); y+=22
     row("POTENT. E",  f"{pe:+8.3f}",    c("wn"), y); y+=22
-    ec=c("go") if e<0 else c("dn")
-    row("TOTAL E",    f"{e:+8.3f}",     ec,      y); y+=22
+    ec_=c("go") if e<0 else c("dn")
+    row("TOTAL E",    f"{e:+8.3f}",     ec_,     y); y+=22
+    row("E DRIFT",    f"{sat.energy_drift*100:.4f}%", c("gr"), y); y+=22
+    sep(y); y+=10
+    # Orbital elements
+    oe = sat.elements
+    row("SEMI-MAJOR a", f"{oe.semi_major_axis:7.3f}",   c("ac"), y); y+=22
+    row("ECCENTR.  e",  f"{oe.eccentricity:7.4f}",      c("ac"), y); y+=22
+    row("INCLINAT. i",  f"{oe.inclination_deg:7.2f}°",  c("ac"), y); y+=22
+    row("PERIAPSIS r_p",f"{oe.periapsis_r:7.3f}",       c("gr"), y); y+=22
+    apo_txt = f"{oe.apoapsis_r:7.3f}" if oe.apoapsis_r < 1e9 else "   ∞   "
+    row("APOAPSIS r_a", apo_txt,                         c("gr"), y); y+=22
+    per_txt = f"{oe.period:7.2f} s" if oe.period < 1e9 else "   ∞   "
+    row("PERIOD   T",   per_txt,                         c("gr"), y); y+=22
+    row("TRUE ANOM ν",  f"{oe.true_anomaly_deg:7.2f}°", c("gr"), y); y+=22
     sep(y); y+=10
     row("TIME x",     f"{dt_mult:.1f}", c("ac"), y); y+=22
     st="PAUSED" if paused else ("ESCAPED" if sat.escaped else "ORBITING")
-    sc=c("wn") if paused else (c("dn") if sat.escaped else c("go"))
+    if sat.thruster.firing: st = "THRUSTING"
+    sc=c("wn") if paused else (c("dn") if sat.escaped else (c("ac") if sat.thruster.firing else c("go")))
     row("STATUS",st,sc,y)
     # energy bar
     by_=py+ph-30; bx_=px+10; bw_=pw-20; bh_=13
@@ -426,7 +446,9 @@ def _make_hud(physics, paused, dt_mult, W, H):
     ctrl=[("Mouse drag","Orbit camera"),("Scroll","Zoom"),
           ("WASD","Pan view"),("↑ / ↓","Speed ±"),("← / →","Rotate vel"),
           ("I / K","Inclination ±"),("C","Circular snap"),("E","Escape snap"),
-          ("1/2/3/4","Presets"),("SPACE","Pause"),("R","Reset"),("F / S","Time ±")]
+          ("Z / X","Thrust pro/retro"),("Q","Impulse prograde"),
+          ("H","Hohmann to 4.0u"),
+          ("1-7","Presets"),("SPACE","Pause"),("R","Reset"),("F/S","Time ±")]
     cw,ch2=242,len(ctrl)*20+12; cpx,cpy=12,H-ch2-12
     cb=_pg.Surface((cw,ch2),_pg.SRCALPHA); cb.fill(c("bg"))
     _pg.draw.rect(cb,(38,55,82,255),cb.get_rect(),1); surf.blit(cb,(cpx,cpy))
@@ -462,6 +484,7 @@ class Renderer:
         self._progs(ctx)
         self._earth(ctx)
         self._satellite(ctx)
+        self._moon(ctx)
         self._scene(ctx)
         self._hud_build(ctx, width, height)
         self.update_projection(width, height)
@@ -486,9 +509,9 @@ class Renderer:
         ibo = ctx.buffer(idx.tobytes())
         self.earth_vao = ctx.vertex_array(self.p_earth,
                            [(vbo, "3f 3f 2f", "in_pos", "in_norm", "in_uv")], ibo)
-        self.t_earth  = _load_tex(ctx, os.path.join(_ASSETS,"assets\earth.jpg"),   3)
-        self.t_clouds = _load_tex(ctx, os.path.join(_ASSETS,"assets\clouds.png"),  3)
-        self.t_spec   = _load_tex(ctx, os.path.join(_ASSETS,"assets\specular.jpg"),3)
+        self.t_earth  = _load_tex(ctx, os.path.join(_ASSETS,"earth.jpg"),   3)
+        self.t_clouds = _load_tex(ctx, os.path.join(_ASSETS,"clouds.png"),  3)
+        self.t_spec   = _load_tex(ctx, os.path.join(_ASSETS,"specular.jpg"),3)
 
     # ── Satellite geometry ────────────────────────────────────────
     def _satellite(self, ctx):
@@ -497,6 +520,22 @@ class Renderer:
         ibo = ctx.buffer(idx.tobytes())
         self.sat_vao = ctx.vertex_array(self.p_sat,
                          [(vbo, "3f 3f", "in_pos", "in_norm")], ibo)
+
+    # ── Moon sphere ───────────────────────────────────────────────
+    def _moon(self, ctx):
+        from constants import MOON_RADIUS
+        v, idx = _sphere_uv(stacks=32, sectors=48, radius=MOON_RADIUS)
+        vbo = ctx.buffer(v.tobytes())
+        ibo = ctx.buffer(idx.tobytes())
+        # Moon reuses earth shader but with a grey colour uniform override
+        # We'll use p_sat (no texture) for simplicity
+        v2, idx2 = _sphere_uv(stacks=32, sectors=48, radius=MOON_RADIUS)
+        # strip UV from data → pos+norm only (6 floats per vertex)
+        verts = v2.reshape(-1, 8)[:, :6].astype(np.float32).flatten()
+        mvbo = ctx.buffer(verts.tobytes())
+        mibo = ctx.buffer(idx2.tobytes())
+        self.moon_vao = ctx.vertex_array(self.p_sat,
+                          [(mvbo, "3f 3f", "in_pos", "in_norm")], mibo)
 
     # ── Stars + grid + arrow ──────────────────────────────────────
     def _scene(self, ctx):
@@ -653,6 +692,50 @@ class Renderer:
             self.arrow_vbo.write(np.concatenate([np.zeros(3,np.float32),Lh]).tobytes())
             self.p_flat["color"].value = (0.35, 0.42, 1.0, 0.38)
             self.arrow_vao.render(moderngl.LINES, vertices=2)
+
+        # ── Moon ──────────────────────────────────────────────────────
+        moon_pos = physics.moon_pos().astype(np.float32)
+        moon_mat = _mat_trans(*moon_pos)
+        moon_color = np.array([0.68, 0.68, 0.65], dtype=np.float32)
+        self.p_sat["model"].write(moon_mat.T.tobytes())
+        self.p_sat["light_dir"].value    = (0.8, 1.0, 0.5)
+        self.p_sat["light_color"].value  = (1.0, 0.96, 0.88)
+        self.p_sat["ambient_col"].value  = (0.18, 0.18, 0.20)
+        self.p_sat["obj_color"].value    = tuple(moon_color)
+        self.p_sat["cam_pos"].value      = tuple(camp)
+        self.p_sat["shininess"].value    = 12.0
+        self.p_sat["emissive"].value     = 0.0
+        self.moon_vao.render(moderngl.TRIANGLES)
+
+        # ── Orbital plane disc (semi-transparent) ──────────────────
+        L_vec = sat.angular_momentum()
+        L_mag = float(np.linalg.norm(L_vec))
+        if L_mag > 1e-6:
+            L_hat = (L_vec / L_mag).astype(np.float32)
+            # Draw a thin ring of line segments in the orbital plane
+            n_seg = 96
+            r_disc = 3.5   # radius of orbital plane indicator ring
+            # Build plane vectors perpendicular to L_hat
+            ref = np.array([1., 0., 0.], dtype=np.float32)
+            if abs(np.dot(ref, L_hat)) > 0.9:
+                ref = np.array([0., 1., 0.], dtype=np.float32)
+            u_hat = ref - np.dot(ref, L_hat) * L_hat
+            u_hat /= np.linalg.norm(u_hat)
+            v_hat2 = np.cross(L_hat, u_hat)
+            ring_pts = []
+            for k in range(n_seg + 1):
+                angle = 2 * math.pi * k / n_seg
+                pt = u_hat * math.cos(angle) * r_disc + v_hat2 * math.sin(angle) * r_disc
+                ring_pts.extend(pt.tolist())
+            ring_arr = np.array(ring_pts, dtype=np.float32)
+            # Use arrow_vbo as scratch (resize if needed)
+            if len(ring_arr) * 4 > 6 * 4:
+                ring_vbo = ctx.buffer(ring_arr.tobytes())
+                ring_vao = ctx.vertex_array(self.p_flat, [(ring_vbo, "3f", "in_pos")])
+                self.p_flat["model"].write(_identity().T.tobytes())
+                self.p_flat["color"].value = (0.30, 0.42, 0.90, 0.28)
+                ring_vao.render(moderngl.LINE_STRIP, vertices=n_seg + 1)
+                ring_vao.release(); ring_vbo.release()
 
         # HUD overlay
         if _pg_ok:
