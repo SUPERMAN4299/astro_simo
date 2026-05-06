@@ -59,8 +59,21 @@ HOHMANN_MIN_TARGET_R: float = 0.35
 # ── Window / renderer ────────────────────────────────────────────────
 WINDOW_WIDTH:  int   = 1280
 WINDOW_HEIGHT: int   = 800
-WINDOW_TITLE:  str   = "Orbital Mechanics Engine v2"
+WINDOW_TITLE:  str   = "Orbital Mechanics Engine v3 — Perturbations"
 CAMERA_NEAR:   float = 0.01
 CAMERA_FAR:    float = 200.0
 CAMERA_FOV:    float = 45.0
 MSAA_SAMPLES:  int   = 4
+
+# ── Perturbations ─────────────────────────────────────────────────────
+# J2/J4 scaled ×500 so nodal precession is visible in sim time
+PERTURB_J2:              float = 1.08263e-3 * 500.0
+PERTURB_J4:              float = -1.60e-6   * 500.0
+PERTURB_DRAG_RHO0:       float = 8.0e-3     # sea-level density (sim units)
+PERTURB_DRAG_H:          float = 0.50       # scale height (sim units)
+PERTURB_DRAG_CdAm:       float = 0.04       # ballistic coefficient
+PERTURB_SRP_P:           float = 3.0e-5     # solar radiation pressure
+PERTURB_SRP_CrAm:        float = 0.010      # reflectivity × area/mass
+PERTURB_SUN_GM:          float = 800.0      # Sun GM (sim units)
+PERTURB_SUN_DIST:        float = 53.75      # Earth-Sun distance (sim units)
+PERTURB_SUN_ROT_PERIOD:  float = 120.0      # Sun rotation period (sim seconds)

@@ -390,10 +390,12 @@ def _make_hud(physics, paused, dt_mult, W, H):
                       "gr":(135,150,170,255),"bg":(8,12,26,215)}[n]
     f  = _pg.font.SysFont("Consolas",15)
     fb = _pg.font.SysFont("Consolas",16,bold=True)
-    ot = sat.orbit_type()
-    e=sat.total_energy(); ke=sat.kinetic_energy(); pe=sat.potential_energy()
-    sp=sat.speed(); di=sat.distance(); vc=sat.circular_speed(); ve=sat.escape_speed()
-    tc={"CIRCULAR":c("go"),"ELLIPTICAL":c("wn"),"ESCAPE":c("dn")}[ot]
+    ot = sat.elements.orbit_type
+    bodies = physics.bodies
+    e=sat.total_energy(bodies); ke=sat.kinetic_energy(); pe=sat.potential_energy(bodies)
+    sp=sat.speed(); r=sat.distance_to_origin(); vc=sat.circular_speed_at(r); ve=sat.escape_speed_at(r)
+    di=r
+    tc={"CIRCULAR":c("go"),"ELLIPTICAL":c("wn"),"ESCAPE":c("dn"),"UNKNOWN":c("gr")}.get(ot, c("gr"))
     pw,ph=292,545; px,py=W-pw-12,12
     pan=_pg.Surface((pw,ph),_pg.SRCALPHA); pan.fill(c("bg"))
     _pg.draw.rect(pan,(38,55,82,255),pan.get_rect(),1); surf.blit(pan,(px,py))
@@ -696,7 +698,7 @@ class Renderer:
                 self.trail_vao = ctx.vertex_array(self.p_trail,
                     [(self.trail_buf,"3f 1f","in_pos","in_age")])
             self.trail_buf.write(data)
-            tc = TRAIL_COLORS[sat.orbit_type()]
+            tc = TRAIL_COLORS.get(sat.elements.orbit_type, TRAIL_COLORS["ELLIPTICAL"])
             self.p_trail["view"].write(v32)
             self.p_trail["proj"].write(p32)
             self.p_trail["trail_color"].value = tuple(tc)
