@@ -34,6 +34,13 @@
 ║    6             Preset: Polar orbit                                ║
 ║    7             Preset: Retrograde                                 ║
 ║    ESC           Quit                                               ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  PERTURBATIONS                                                       ║
+║    P             Toggle ALL perturbations on/off                     ║
+║    J             Toggle J2 oblateness                                ║
+║    D             Toggle atmospheric drag                             ║
+║    N             Toggle solar radiation pressure                     ║
+║    G             Toggle solar gravity (3rd body)                     ║
 ╚══════════════════════════════════════════════════════════════════════╝
 """
 
@@ -171,6 +178,43 @@ def _build_callbacks(window, physics: PhysicsEngine, camera: Camera,
 
             elif key in _PRESET_KEYS:
                 physics.load_preset(_PRESET_KEYS[key])
+
+            # ── Perturbation toggles ───────────────────────────────
+            elif key == glfw.KEY_P:
+                # Toggle ALL perturbations at once
+                cfg = physics.satellite.perturbations.cfg
+                all_on = (cfg.enable_j2 and cfg.enable_drag and
+                          cfg.enable_srp and cfg.enable_solar_gravity)
+                new_state = not all_on
+                cfg.enable_j2            = new_state
+                cfg.enable_j4            = new_state
+                cfg.enable_drag          = new_state
+                cfg.enable_srp           = new_state
+                cfg.enable_solar_gravity = new_state
+                status = "ON" if new_state else "OFF"
+                print(f"[Perturbations] ALL → {status}")
+
+            elif key == glfw.KEY_J:
+                cfg = physics.satellite.perturbations.cfg
+                cfg.enable_j2 = not cfg.enable_j2
+                cfg.enable_j4 = cfg.enable_j2   # J4 follows J2
+                print(f"[Perturbations] J2/J4 → {'ON' if cfg.enable_j2 else 'OFF'}")
+
+            elif key == glfw.KEY_D and inp.paused[0]:
+                # Only toggle drag when paused (avoid key conflict with pan)
+                cfg = physics.satellite.perturbations.cfg
+                cfg.enable_drag = not cfg.enable_drag
+                print(f"[Perturbations] Drag → {'ON' if cfg.enable_drag else 'OFF'}")
+
+            elif key == glfw.KEY_N:
+                cfg = physics.satellite.perturbations.cfg
+                cfg.enable_srp = not cfg.enable_srp
+                print(f"[Perturbations] SRP → {'ON' if cfg.enable_srp else 'OFF'}")
+
+            elif key == glfw.KEY_G:
+                cfg = physics.satellite.perturbations.cfg
+                cfg.enable_solar_gravity = not cfg.enable_solar_gravity
+                print(f"[Perturbations] Solar Gravity → {'ON' if cfg.enable_solar_gravity else 'OFF'}")
 
         # Thrust key release (continuous thrust)
         if action == glfw.RELEASE:

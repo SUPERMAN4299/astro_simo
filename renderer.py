@@ -455,8 +455,38 @@ def _make_hud(physics, paused, dt_mult, W, H):
     for i,(k,d) in enumerate(ctrl):
         surf.blit(f.render(k,True,c("ac")),(cpx+8, cpy+6+i*20))
         surf.blit(f.render(d,True,c("gr")),(cpx+95,cpy+6+i*20))
-    pl=f.render("1=Circular  2=Elliptical  3=Escape  4=Inclined",True,c("gr"))
+    pl=f.render("1-7=Presets  Z/X=Thrust  H=Hohmann  P=Toggle Perturb",True,c("gr"))
     surf.blit(pl,(W//2-pl.get_width()//2,H-20))
+
+    # ── Perturbation panel (bottom-right) ─────────────────────────
+    pdata = sat.perturbations.summary()
+    cfg   = sat.perturbations.cfg
+    pw2,ph2 = 230, 202
+    ppx,ppy = W-pw2-12, H-ph2-28
+    ppan=_pg.Surface((pw2,ph2),_pg.SRCALPHA); ppan.fill(c("bg"))
+    _pg.draw.rect(ppan,(38,55,82,255),ppan.get_rect(),1); surf.blit(ppan,(ppx,ppy))
+    ptitle=fb.render("PERTURBATIONS",True,c("ac"))
+    surf.blit(ptitle,(ppx+pw2//2-ptitle.get_width()//2,ppy+6))
+    def pcol(enabled): return c("go") if enabled else c("gr")
+    def prow(lbl,val,en,yo):
+        tick = "●" if en else "○"
+        ls=f.render(f"{tick} {lbl}",True,pcol(en))
+        vs=f.render(val,True,pcol(en))
+        surf.blit(ls,(ppx+8,ppy+yo)); surf.blit(vs,(ppx+pw2-vs.get_width()-8,ppy+yo))
+    py2=28
+    prow("J2 Oblate",  f"{pdata['j2']:.2e}",  cfg.enable_j2,   py2); py2+=20
+    prow("J4 Zonal",   f"{pdata['j4']:.2e}",  cfg.enable_j4,   py2); py2+=20
+    prow("Atm. Drag",  f"{pdata['drag']:.2e}", cfg.enable_drag, py2); py2+=20
+    prow("Sol. Rad.",  f"{pdata['srp']:.2e}",  cfg.enable_srp,  py2); py2+=20
+    prow("Solar Grav.",f"{pdata['solar']:.2e}",cfg.enable_solar_gravity, py2); py2+=20
+    _pg.draw.line(surf,(35,50,72,255),(ppx+8,ppy+py2),(ppx+pw2-8,ppy+py2)); py2+=8
+    tdv=f.render(f"ΔV drag: {pdata['drag_dv_total']:.4f}",True,c("wn"))
+    surf.blit(tdv,(ppx+8,ppy+py2)); py2+=20
+    tot=f.render(f"Total:   {pdata['total']:.2e}",True,c("ac"))
+    surf.blit(tot,(ppx+8,ppy+py2))
+    # Toggle hint
+    hint=f.render("P=All  J/D/R/G=J2/Drag/SRP/Grav",True,c("gr"))
+    surf.blit(hint,(ppx+pw2//2-hint.get_width()//2,ppy+ph2-16))
     if sat.escaped:
         em=fb.render("ESCAPE TRAJECTORY  — Press R",True,c("dn"))
         surf.blit(em,(W//2-em.get_width()//2,H//2-18))

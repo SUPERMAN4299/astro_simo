@@ -39,6 +39,7 @@ import numpy as np
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+from perturbations import PerturbationEngine, PerturbationConfig
 from constants import (
     GM_EARTH, GM_MOON,
     EARTH_RADIUS, MOON_RADIUS,
@@ -289,6 +290,9 @@ class Satellite:
         self._e0:           Optional[float] = None
         self.energy_drift:  float = 0.0
 
+        # Perturbation engine (each satellite owns one; shareable config)
+        self.perturbations: PerturbationEngine = PerturbationEngine()
+
     # ── Trail ──────────────────────────────────────────────────────
     @property
     def trail(self) -> List[np.ndarray]:
@@ -300,6 +304,7 @@ class Satellite:
         self.escaped  = False
         self.collided = False
         self._e0      = None
+        self.perturbations.total_drag_dv = 0.0
 
     def _record_trail(self) -> None:
         self._trail_counter += 1
@@ -373,12 +378,16 @@ class Satellite:
         # Collision check + response
         self._resolve_collisions(bodies)
 
-        # New acceleration (gravity + thrust)
+        # New acceleration (gravity + perturbations + thrust)
         a_grav    = self._gravity(self.pos, bodies)
+        a_pert    = self.perturbations.total(self.pos, self.vel)
         dv_thrust = self.thruster.compute_dv(self.pos, self.vel, dt_eff)
         a_thrust  = dv_thrust / dt_eff if dt_eff > 1e-12 else np.zeros(3)
-        a_new     = a_grav + a_thrust
+        a_new     = a_grav + a_pert + a_thrust
         self.acc  = a_new
+        # Rotate sun direction for SRP seasonal variation + accumulate diagnostics
+        self.perturbations.accumulate_step(dt_eff)
+        self.perturbations.rotate_sun(dt_eff)
 
         # Update velocity (Verlet)
         self.vel = self.vel + 0.5 * (a0 + a_new) * dt_eff
